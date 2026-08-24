@@ -1,0 +1,16 @@
+github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+github.com/projectdiscovery/httpx/cmd/httpx@latest
+github.com/projectdiscovery/katana/cmd/katana@latest
+github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+github.com/ffuf/ffuf/v2@latestt
+github.com/ffuf/ffuf/v2@latest
+github.com/owasp-amass/amass/v4/...@master
+github.com/OJ/gobuster/v3@latest
+github.com/d3mondev/puredns/v2@latest
+github.com/BishopFox/jsluice/cmd/jsluice@latest
+github.com/tomnomnom/waybackurls@latest
+github.com/lc/gau/v2/cmd/gau@latest
+github.com/003random/getJS@latest
+github.com/hahwul/dalfox/v2@latest
+github.com/trufflesecurity/trufflehog/v3@latest
+github.com/gitleaks/gitleaks/v8@latest
