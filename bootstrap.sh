@@ -40,3 +40,13 @@ echo "[+] Pulling wordlists..."
 [ -d ~/wordlists ] || git clone --depth 1 https://github.com/assetnote/wordlists.git ~/wordlists
 
 echo "[+] Done. Install Burp CE manually from portswigger.net (GUI installer)."
+
+echo "[+] Installing bbot..."
+if ! command -v pipx &>/dev/null; then
+  sudo apt install -y pipx 2>&1 | tail -3
+  pipx ensurepath
+  export PATH="$PATH:$HOME/.local/bin"
+  grep -qxF 'export PATH=$PATH:$HOME/.local/bin' ~/.bashrc || \
+    echo 'export PATH=$PATH:$HOME/.local/bin' >> ~/.bashrc
+fi
+pipx install bbot || pip install bbot --user
