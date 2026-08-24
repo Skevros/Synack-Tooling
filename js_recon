@@ -1,0 +1,283 @@
+#!/bin/bash
+# =====================================================================
+#  JS Recon & Testing Pipeline — v4 
+# =====================================================================
+TARGET="$1"
+RATE_LIMIT="2"
+WORKDIR="recon_${TARGET}_$(date +%Y%m%d_%H%M%S)"
+THREADS=20
+CONCURRENT=10
+
+# --- Paths -----------------------------------------------------------
+export PATH="$HOME/go/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
+LINKFINDER="$HOME/LinkFinder/linkfinder.py"
+KITERUNNER_DICT="$HOME/wordlists/kiterunner/routes-large.kite"
+SECLISTS="$HOME/SecLists"
+RESOLVERS="$HOME/resolvers.txt"
+BB_HEADER="X-Bug-Bounty: hackerone-skevros"
+
+# --- Setup -----------------------------------------------------------
+mkdir -p "$WORKDIR"/{js_files,results,logs,screenshots}
+LOGFILE="$WORKDIR/logs/pipeline.log"
+exec > >(tee -a "$LOGFILE") 2>&1
+
+if [ ! -f "$RESOLVERS" ]; then
+    echo "[*] Downloading fresh resolvers.txt..."
+    curl -sL https://raw.githubusercontent.com/trickest/resolvers/main/resolvers.txt -o "$RESOLVERS"
+fi
+
+# --- Tool checks (split required / optional) -------------------------
+echo "[*] Checking tools..."
+REQUIRED="curl jq httpx python3 gau katana waybackurls subfinder"
+OPTIONAL="trufflehog gowitness arjun ffuf kr js-beautify getjs naabu puredns"
+for tool in $REQUIRED; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "[!] REQUIRED missing: $tool"; exit 1; }
+done
+for tool in $OPTIONAL; do
+    command -v "$tool" >/dev/null 2>&1 || echo "[!] Optional missing: $tool (phase will be skipped)"
+done
+
+# ---------- Phase 0: Baseline (with bug bounty header) ---------------
+echo "[Phase 0] Baseline"
+curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" -H "$BB_HEADER" "https://$TARGET/api/health" || true
+curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" -H "$BB_HEADER" "https://$TARGET/api/health" || true
+curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" -H "$BB_HEADER" "https://$TARGET/api/health" || true
+
+# ---------- Phase 1: Asset Discovery ---------------------------------
+echo "[Phase 1] Subdomain & port enumeration"
+subfinder -d "$TARGET" -o "$WORKDIR/results/subdomains.txt" -silent
+if [ ! -s "$WORKDIR/results/subdomains.txt" ]; then
+    curl -s "https://crt.sh/?q=%25.$TARGET&output=json" | jq -r '.[].name_value' | sed 's/\*\.//g' | sort -u > "$WORKDIR/results/subdomains.txt"
+fi
+echo "   subdomains: $(wc -l < "$WORKDIR/results/subdomains.txt")"
+
+if command -v puredns &>/dev/null; then
+    puredns resolve "$WORKDIR/results/subdomains.txt" -r "$RESOLVERS" --write "$WORKDIR/results/resolved.txt"
+else
+    httpx -l "$WORKDIR/results/subdomains.txt" -silent -o "$WORKDIR/results/resolved.txt" -H "$BB_HEADER"
+fi
+[ -s "$WORKDIR/results/resolved.txt" ] || { echo "[!] No hosts resolved. Exiting."; exit 1; }
+echo "   resolved: $(wc -l < "$WORKDIR/results/resolved.txt")"
+
+if command -v naabu &>/dev/null; then
+    naabu -l "$WORKDIR/results/resolved.txt" -p 80,443,8080,8443,3000,4443,4567,5000,5001,7001,8000,8081,8443,8888,9000,9090,9443 -silent -o "$WORKDIR/results/ports.txt"
+    echo "   open ports: $(wc -l < "$WORKDIR/results/ports.txt")"
+fi
+
+echo "[*] Live HTTP services"
+httpx -l "$WORKDIR/results/ports.txt" -silent -o "$WORKDIR/results/live_webservers.txt" -timeout 10 -rate-limit "$RATE_LIMIT" -H "$BB_HEADER"
+[ -s "$WORKDIR/results/live_webservers.txt" ] || { echo "[!] No HTTP services. Exiting."; exit 1; }
+echo "   live hosts: $(wc -l < "$WORKDIR/results/live_webservers.txt")"
+
+if command -v gowitness &>/dev/null; then
+    gowitness scan file -f "$WORKDIR/results/live_webservers.txt" --screenshot-path "$WORKDIR/screenshots/"
+    echo "[*] Screenshots saved"
+fi
+
+# ---------- Phase 2: JS Discovery ------------------------------------
+echo "[Phase 2] JS & historical URL collection"
+gau "$TARGET" > "$WORKDIR/results/gau_urls.txt"
+waybackurls "$TARGET" >> "$WORKDIR/results/gau_urls.txt"
+sort -u "$WORKDIR/results/gau_urls.txt" -o "$WORKDIR/results/gau_urls.txt"
+
+katana -list "$WORKDIR/results/live_webservers.txt" -jc -kf all -silent -o "$WORKDIR/results/katana_urls.txt" -H "$BB_HEADER"
+
+grep -E '\.js(\?|$)' "$WORKDIR/results/gau_urls.txt" > "$WORKDIR/results/js_urls_historical.txt"
+grep -E '\.js(\?|$)' "$WORKDIR/results/katana_urls.txt" >> "$WORKDIR/results/js_urls_historical.txt"
+if command -v getjs &>/dev/null; then
+    getjs -u "https://$TARGET" --timeout 10 --output "$WORKDIR/results/js_urls_getjs.txt"
+    cat "$WORKDIR/results/js_urls_getjs.txt" >> "$WORKDIR/results/js_urls_historical.txt"
+fi
+sort -u "$WORKDIR/results/js_urls_historical.txt" -o "$WORKDIR/results/js_urls_all.txt"
+echo "   total JS URLs: $(wc -l < "$WORKDIR/results/js_urls_all.txt")"
+
+# Download with concurrency limit
+MAX_JOBS=20
+while read -r url; do
+    hash=$(echo -n "$url" | md5sum | cut -d' ' -f1)
+    curl -s "$url" -H "$BB_HEADER" -o "$WORKDIR/js_files/${hash}.js" &
+    (( $(jobs -r | wc -l) >= MAX_JOBS )) && wait -n
+done < "$WORKDIR/results/js_urls_all.txt"
+wait
+echo "   downloaded: $(find "$WORKDIR/js_files" -name "*.js" | wc -l) files"
+
+if command -v js-beautify &>/dev/null; then
+    for file in "$WORKDIR/js_files"/*.js; do
+        readable=$(grep -oE '[a-zA-Z_][a-zA-Z0-9_]{20,}' "$file" | wc -l)
+        if [ "$readable" -lt 10 ]; then
+            js-beautify "$file" -o "${file%.js}_beautified.js" 2>/dev/null
+        else
+            cp "$file" "${file%.js}_beautified.js"
+        fi
+    done
+    echo "   beautified: $(find "$WORKDIR/js_files" -name "*_beautified.js" | wc -l)"
+fi
+
+# TruffleHog (optional)
+if command -v trufflehog &>/dev/null; then
+    trufflehog filesystem "$WORKDIR/js_files/" --json > "$WORKDIR/results/trufflehog.json"
+    echo "   TruffleHog candidates: $(wc -l < "$WORKDIR/results/trufflehog.json")"
+fi
+if [ -f "$HOME/DumpsterDiver/DumpsterDiver.py" ]; then
+    python3 "$HOME/DumpsterDiver/DumpsterDiver.py" -p "$WORKDIR/js_files/" --json > "$WORKDIR/results/dumpsterdiver.json" 2>/dev/null
+    echo "   DumpsterDiver run"
+fi
+
+# ---------- Phase 3: Endpoint Extraction -----------------------------
+echo "[Phase 3] Endpoint extraction"
+
+# JSluice (fixed output)
+find "$WORKDIR/js_files/" -name "*_beautified.js" -type f | while read -r f; do
+    jsluice urls -f "$f" 2>/dev/null | jq -r '.url // empty' >> "$WORKDIR/results/endpoints_jsluice.txt"
+done
+sort -u "$WORKDIR/results/endpoints_jsluice.txt" -o "$WORKDIR/results/endpoints_jsluice.txt"
+echo "   JSluice: $(wc -l < "$WORKDIR/results/endpoints_jsluice.txt")"
+
+# LinkFinder
+find "$WORKDIR/js_files/" -name "*_beautified.js" | while read -r f; do
+    python3 "$LINKFINDER" -i "file://$f" -o cli >> "$WORKDIR/results/endpoints_linkfinder.txt" 2>/dev/null
+done
+sort -u "$WORKDIR/results/endpoints_linkfinder.txt" -o "$WORKDIR/results/endpoints_linkfinder.txt"
+echo "   LinkFinder: $(wc -l < "$WORKDIR/results/endpoints_linkfinder.txt")"
+
+# GAU endpoints (sed -E fix)
+grep -Eo 'https?://[^/]+(/[a-zA-Z0-9._~:/?%&=+#-]*)' "$WORKDIR/results/gau_urls.txt" | sed -E 's|https?://[^/]*||g' | sort -u > "$WORKDIR/results/endpoints_gau.txt"
+echo "   GAU endpoints: $(wc -l < "$WORKDIR/results/endpoints_gau.txt")"
+
+# Merge
+cat "$WORKDIR/results/endpoints_jsluice.txt" "$WORKDIR/results/endpoints_linkfinder.txt" "$WORKDIR/results/endpoints_gau.txt" | \
+    sort -u | grep -v "^#" | grep -v "^//" | grep -E "^/[a-zA-Z0-9/_\-\.]+" > "$WORKDIR/results/endpoints_merged.txt"
+echo "   merged: $(wc -l < "$WORKDIR/results/endpoints_merged.txt")"
+
+# Kiterunner (kr, optional)
+if command -v kr &>/dev/null && [ -f "$KITERUNNER_DICT" ]; then
+    while read -r host; do
+        kr scan "$host" -w "$KITERUNNER_DICT" -x 10 -H "$BB_HEADER" --output "$WORKDIR/results/kr_${host//[:\/]/_}.txt" 2>/dev/null
+        grep -Eo '/[a-zA-Z0-9/_\-]+' "$WORKDIR/results/kr_${host//[:\/]/_}.txt" >> "$WORKDIR/results/endpoints_merged.txt"
+    done < "$WORKDIR/results/live_webservers.txt"
+    sort -u "$WORKDIR/results/endpoints_merged.txt" -o "$WORKDIR/results/endpoints_merged.txt"
+    echo "   after Kiterunner: $(wc -l < "$WORKDIR/results/endpoints_merged.txt")"
+fi
+
+# httpx validation (with -sc, bracket-fixed 403 detection)
+echo "[*] httpx validation"
+while read -r host; do
+    sed "s|^|$host|" "$WORKDIR/results/endpoints_merged.txt"
+done < "$WORKDIR/results/live_webservers.txt" | \
+    httpx -silent -mc 200,201,301,302,401,403 -sc -timeout 8 -rate-limit "$RATE_LIMIT" -H "$BB_HEADER" -o "$WORKDIR/results/live_endpoints.txt"
+echo "   validated: $(wc -l < "$WORKDIR/results/live_endpoints.txt")"
+
+# Extract 403 endpoints correctly (bracket format)
+grep '\[403\]' "$WORKDIR/results/live_endpoints.txt" | awk '{print $1}' > "$WORKDIR/results/endpoints_403.txt"
+echo "   403 endpoints: $(wc -l < "$WORKDIR/results/endpoints_403.txt")"
+
+# bypass-403 & nomore403 (loop fixed for nomore403)
+if command -v bypass-403 &>/dev/null && [ -s "$WORKDIR/results/endpoints_403.txt" ]; then
+    while read -r url; do
+        bypass-403 -u "$url" >> "$WORKDIR/results/bypass_403_results.txt" 2>/dev/null
+    done < "$WORKDIR/results/endpoints_403.txt"
+    echo "[*] bypass-403 completed"
+fi
+if command -v nomore403 &>/dev/null && [ -s "$WORKDIR/results/endpoints_403.txt" ]; then
+    while read -r url; do
+        nomore403 -u "$url" >> "$WORKDIR/results/nomore403_results.txt" 2>/dev/null
+    done < "$WORKDIR/results/endpoints_403.txt"
+    echo "[*] nomore403 completed"
+fi
+
+# ffuf on interesting subs (with BB header)
+if command -v ffuf &>/dev/null; then
+    grep -iE 'admin|api|internal|dev|staging' "$WORKDIR/results/live_webservers.txt" | while read -r host; do
+        ffuf -u "$host/FUZZ" -w "$SECLISTS/Discovery/Web-Content/raft-large-directories.txt" \
+            -t 5 -rate "$RATE_LIMIT" -mc 200,301,302,401,403 \
+            -H "$BB_HEADER" \
+            -o "$WORKDIR/results/ffuf_${host//[:\/]/_}.json" -of json -s
+    done
+    echo "[*] ffuf completed"
+fi
+
+# ---------- Phase 4: Parameter Extraction ----------------------------
+echo "[Phase 4] Parameter extraction"
+for file in "$WORKDIR/js_files/"*_beautified.js; do
+    grep -oE '\?[a-zA-Z_][a-zA-Z0-9_]*=' "$file" | cut -d'=' -f1 | cut -d'?' -f2 >> "$WORKDIR/results/js_params_query.txt"
+    grep -oE ':\s*"[a-zA-Z_][a-zA-Z0-9_]*"' "$file" | cut -d'"' -f2 >> "$WORKDIR/results/js_params_json.txt"
+    grep -oE 'name=["\x27][a-zA-Z_][a-zA-Z0-9_]*["\x27]' "$file" | cut -d'"' -f2 | cut -d"'" -f2 >> "$WORKDIR/results/js_params_form.txt"
+done
+cat "$WORKDIR/results/js_params_*.txt" | sort -u > "$WORKDIR/results/js_parameters_all.txt"
+echo "   static params: $(wc -l < "$WORKDIR/results/js_parameters_all.txt")"
+
+# Arjun on API endpoints (optional, with header)
+if command -v arjun &>/dev/null; then
+    awk '{print $1}' "$WORKDIR/results/live_endpoints.txt" | grep -E '/api/|/v[0-9]/' | head -20 > "$WORKDIR/results/arjun_targets.txt"
+    while read -r url; do
+        outfile="$WORKDIR/results/arjun_$(echo -n "$url" | md5sum | cut -d' ' -f1).json"
+        arjun -u "$url" -t "$THREADS" --delay 1 -o "$outfile" -q --headers "$BB_HEADER"
+        [ -s "$outfile" ] && echo "   arjun success: $url" || echo "   arjun no output: $url"
+    done < "$WORKDIR/results/arjun_targets.txt"
+fi
+
+# ---------- Phase 5: Request Generation ------------------------------
+# echo "[Phase 5] Burp payload generation"
+#awk '{print $1}' "$WORKDIR/results/live_endpoints.txt" | sed -E 's|https?://[^/]*||g' | sort -u > "$WORKDIR/results/live_paths.txt"
+
+#python3 -c "
+#endpoints = open('$WORKDIR/results/live_paths.txt').read().splitlines()
+#params = open('$WORKDIR/results/js_parameters_all.txt').read().splitlines()
+#with open('$WORKDIR/results/burp_intruder_payloads.txt','w') as f:
+#   for e in endpoints:
+#      f.write(f'GET {e} HTTP/1.1\\nHost: $TARGET\\n$BB_HEADER\\nAuthorization: Bearer REPLACE_TOKEN\\n\\n')
+#        for p in params[:50]:
+#            f.write(f'GET {e}?{p}=FUZZ HTTP/1.1\\nHost: $TARGET\\n$BB_HEADER\\nAuthorization: Bearer REPLACE_TOKEN\\n\\n')
+#"
+
+# ---------- Phase 6: Mutation Pack -----------------------------------
+#echo "[Phase 6] Mutation pack"
+#python3 -c "
+#import json
+#params = open('$WORKDIR/results/js_parameters_all.txt').read().splitlines()
+#payloads = {
+#    'sqli': [\"' OR '1'='1\", \"'; DROP TABLE users--\", '\${7*7}'],
+#    'auth_bypass': ['1 OR 1=1', \"admin' --\", \"' or 1=1 or '\"],
+#    'path_traversal': ['../../etc/passwd', '..\\\\..\\\\windows\\\\system32', '%2e%2e/'],
+#    'xss': ['<script>alert(1)</script>', \"';alert(1);//\", 'javascript:alert(1)'],
+#    'xxe': ['<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]>'],
+#    'logic': ['admin=true', 'role=admin', 'is_admin=1']
+#}
+#mutations = [{'param': p, 'payload': v, 'type': k} for k,vals in payloads.items() for v in vals for p in params[:30]]
+#json.dump(mutations, open('$WORKDIR/results/mutation_pack.json','w'), indent=2)
+#print(f'[*] Generated {len(mutations)} mutations')
+#"
+
+#python3 -c "
+#import json
+#endpoints = open('$WORKDIR/results/live_paths.txt').read().splitlines()
+#mutations = json.load(open('$WORKDIR/results/mutation_pack.json'))
+#with open('$WORKDIR/results/test_requests.txt','w') as f:
+#    for e in endpoints[:100]:
+#        for m in mutations[:1000]:
+#            f.write(f'GET {e}?{m[\"param\"]}={m[\"payload\"]} HTTP/1.1\\nHost: $TARGET\\n$BB_HEADER\\nX-Mutation-Type: {m[\"type\"]}\\n\\n')
+#"
+
+# ---------- Phase 7: Semantic Analysis (API patterns) ---------------
+echo "[Phase 7] Semantic analysis"
+python3 -c "
+import glob, re, json
+from collections import defaultdict
+patterns = defaultdict(list)
+for f in glob.glob('$WORKDIR/js_files/*_beautified.js'):
+    c = open(f).read()
+    patterns['fetch'].extend(re.findall(r\"fetch\s*\(\s*['\"]([^'\"]+)['\"]\", c))
+    patterns['http_method'].extend(re.findall(r\"(?:axios|http)\s*\.\s*(?:get|post|put|delete|patch)\s*\(\s*['\"]([^'\"]+)['\"]\", c))
+    patterns['xhr'].extend([f'{m} {e}' for m,e in re.findall(r\"open\s*\(\s*['\"]([A-Z]+)['\"],\s*['\"]([^'\"]+)['\"]\", c)])
+json.dump({k: list(set(v)) for k,v in patterns.items()}, open('$WORKDIR/results/api_patterns.json','w'), indent=2)
+print('[*] API patterns saved')
+"
+
+# --- Manual hints (no nuclei) -----------------------------------------
+echo ""
+echo "[*] Pipeline completed at $(date)"
+echo "    All output in: $WORKDIR/"
+echo "    Manual steps:"
+echo "      - mitmproxy2swagger while browsing"
+echo "      - Gitleaks on repo if accessible"
+echo "      - Review screenshots: $WORKDIR/screenshots/"
