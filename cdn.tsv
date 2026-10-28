@@ -1,0 +1,47 @@
+
+# CDN and edge infrastructure providers.
+# Hosts here are resolved and recorded, but never actively probed.
+
+# Cloudflare
+skip    *.cloudflare.net
+skip    *.cloudflare.com
+skip    *.cloudflare-dns.com
+skip    *.cdn.cloudflare.net
+
+# Akamai
+skip    *.akamai.net
+skip    *.akamaiedge.net
+skip    *.akamaitechnologies.com
+skip    *.akamaized.net
+skip    *.edgekey.net
+skip    *.edgesuite.net
+skip    *.edgekey.net
+
+# AWS CloudFront & ELB
+skip    *.cloudfront.net
+skip    *.elb.amazonaws.com
+skip    *.elb.us-east-1.amazonaws.com
+skip    *.elb.us-west-2.amazonaws.com
+skip    *.elb.eu-west-1.amazonaws.com
+
+# Fastly
+skip    *.fastly.net
+skip    *.fastlylb.net
+skip    *.fastly-edge.com
+
+# Other CDNs
+skip    *.edgecastcdn.net
+skip    *.llnwd.net
+skip    *.cdn77.org
+skip    *.stackpathdns.com
+skip    *.hwcdn.net
+skip    *.cachefly.net
+skip    *.incapdns.net
+skip    *.impervadns.net
+skip    *.stackpath.com
+skip    *.section.io
+skip    *.bunnycdn.com
+skip    *.keycdn.com
+skip    *.gcorelabs.com
+skip    *.byoip.*
+skip    *.byoip.klarna.com
