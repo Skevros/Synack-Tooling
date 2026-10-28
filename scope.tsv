@@ -1,0 +1,32 @@
+# ~/.config/recon/scope.tsv
+# Top-level scope. Layers applied in order; first match wins.
+#
+# Rule kinds:
+#   include <pattern>              host is in scope, actively probed
+#   exclude <pattern>              host is out of scope, never touched
+#   skip    <pattern>              host is in scope, resolved, but not probed
+#   rate    <pattern>  <number>    per-host req/s cap (falls back to DEFAULT_RATE=20)
+#   header  <pattern>  <Name: V>   extra header sent on every request to matching hosts
+#   tag     <pattern>  <name>      metadata label, appears in exports only
+#
+# Patterns: hostname globs. `*.example.com` matches any subdomain.
+# Include rules can reference other files:  include     ./path/to/file.tsv
+#
+# Precedence: exclude > skip > include > out
+
+# ---- Defaults (safe to keep on for every program) ----
+include ./defaults/cdn.tsv
+include ./defaults/saas.tsv
+include ./defaults/analytics.tsv
+include ./defaults/hosting.tsv
+
+# ---- Program-specific (uncomment exactly one) ----
+#include        ./programs/ens.tsv
+#include        ./programs/klarna.tsv
+#include        ./programs/acme.tsv
+#include        ./programs/etherfi.tsv
+include ./programs/walt.tsv
+
+
+# ---- Personal overrides (gitignored, keep credentials here) ----
+include ./overrides.tsv
