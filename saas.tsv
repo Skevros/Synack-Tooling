@@ -1,0 +1,80 @@
+# Third-party SaaS embedded in customer domains.
+
+# Support / status / feedback
+skip    *.zendesk.com
+skip    *.zendesk.net
+skip    *.zdassets.com
+skip    *.statuspage.io
+skip    *.statuspage.com
+skip    *.status.io
+skip    *.instatus.com
+skip    *.freshdesk.com
+skip    *.freshservice.com
+skip    *.intercom.io
+skip    *.intercomcdn.com
+skip    *.helpscout.net
+skip    *.helpscoutdocs.com
+skip    *.uservoice.com
+skip    *.getsatisfaction.com
+skip    *.tawk.to
+skip    *.livechatinc.com
+skip    *.drift.com
+skip    *.driftt.com
+skip    *.crisp.chat
+skip    *.olark.com
+
+# CRM / marketing
+skip    *.salesforce.com
+skip    *.force.com
+skip    *.exacttarget.com
+skip    *.marketo.com
+skip    *.mktoresp.com
+skip    *.hubspot.com
+skip    *.hs-scripts.com
+skip    *.hsforms.com
+skip    *.hsleadflows.net
+skip    *.hubapi.com
+skip    *.pardot.com
+skip    *.mailchimp.com
+skip    *.list-manage.com
+
+# Auth / identity (unless the program specifically scopes them)
+skip    *.auth0.com
+skip    *.okta.com
+skip    *.oktapreview.com
+skip    *.onelogin.com
+skip    *.duosecurity.com
+skip    *.pingidentity.com
+skip    *.onelogin.com
+
+# Commerce
+skip    *.myshopify.com
+skip    *.shopifycdn.com
+skip    *.shopifyapps.com
+skip    *.bigcommerce.com
+skip    *.mybigcommerce.com
+skip    *.volusion.com
+skip    *.squarespace.com
+skip    *.wix.com
+skip    *.wixsite.com
+skip    *.wordpress.com
+skip    *.wpengine.com
+skip    *.pantheonsite.io
+skip    *.kinsta.cloud
+skip    *.wp.com
+
+# Search / docs
+skip    *.algolia.com
+skip    *.algolianet.com
+skip    *.algolia.net
+skip    *.elastic.co
+skip    *.readme.io
+skip    *.readthedocs.io
+skip    *.gitbook.io
+skip    *.gitbook.com
+skip    *.notion.site
+skip    *.notion.so
+skip    *.atlassian.net
+skip    *.atlassian.com
+skip    *.jira.com
+skip    *.confluence.com
