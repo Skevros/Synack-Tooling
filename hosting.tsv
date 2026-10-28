@@ -1,0 +1,74 @@
+
+# PaaS, static hosting, and preview-deployment providers.
+
+# Heroku
+skip    *.herokudns.com
+skip    *.herokuapp.com
+skip    *.herokussl.com
+
+# Vercel / Netlify / Cloudflare Pages
+skip    *.vercel.app
+skip    *.vercel.com
+skip    *.now.sh
+skip    *.netlify.app
+skip    *.netlify.com
+skip    *.netlify.dev
+skip    *.pages.dev
+skip    *.workers.dev
+skip    *.cloudflarepages.com
+
+# GitHub / GitLab
+skip    *.github.io
+skip    *.githubusercontent.com
+skip    *.github.com
+skip    *.gitlab.io
+skip    *.gitlab.com
+skip    *.bitbucket.io
+skip    *.bitbucket.org
+skip    *.readthedocs.io
+
+# Other PaaS
+skip    *.surge.sh
+skip    *.fly.dev
+skip    *.fly.io
+skip    *.onrender.com
+skip    *.render.com
+skip    *.railway.app
+skip    *.railway.dev
+skip    *.glitch.me
+skip    *.repl.co
+skip    *.replit.dev
+skip    *.repl.it
+skip    *.pythonanywhere.com
+skip    *.now.sh
+skip    *.deno.dev
+skip    *.deno.com
+
+# AWS static
+skip    *.s3.amazonaws.com
+skip    *.s3-website.us-east-1.amazonaws.com
+skip    *.s3-website.us-west-2.amazonaws.com
+skip    *.s3-website.eu-west-1.amazonaws.com
+skip    *.s3-website.eu-central-1.amazonaws.com
+skip    *.s3-website.ap-southeast-1.amazonaws.com
+skip    *.s3-website.ap-southeast-2.amazonaws.com
+
+# Azure static
+skip    *.azureedge.net
+skip    *.azurewebsites.net
+skip    *.blob.core.windows.net
+skip    *.trafficmanager.net
+skip    *.azurestaticapps.net
+skip    *.azurefd.net
+
+# GCP static
+skip    *.appspot.com
+skip    *.firebaseapp.com
+skip    *.web.app
+skip    *.firebaseio.com
+skip    *.cloudfunctions.net
+skip    *.run.app
+skip    *.storage.googleapis.com
+skip    *.googleusercontent.com
+skip    *.googleapis.com
+skip    *.gstatic.com
