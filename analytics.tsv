@@ -1,0 +1,62 @@
+
+# Analytics, monitoring, APM, and error tracking.
+
+# Google
+skip    *.google-analytics.com
+skip    *.analytics.google.com
+skip    *.googletagmanager.com
+skip    *.googletagservices.com
+skip    *.googlesyndication.com
+skip    *.doubleclick.net
+skip    *.googleadservices.com
+skip    *.google.com
+
+# General analytics
+skip    *.segment.io
+skip    *.segment.com
+skip    *.mixpanel.com
+skip    *.amplitude.com
+skip    *.heap.io
+skip    *.heapanalytics.com
+skip    *.fullstory.com
+skip    *.hotjar.com
+skip    *.hotjar.io
+skip    *.hotjar.us
+skip    *.mouseflow.com
+skip    *.crazyegg.com
+skip    *.clicktale.net
+skip    *.luckyorange.com
+skip    *.inspectlet.com
+skip    *.smartlook.com
+skip    *.logrocket.com
+skip    *.logrocket.io
+skip    *.lr-ingest.io
+
+# A/B testing
+skip    *.optimizely.com
+skip    *.optimizelyapis.com
+skip    *.vwo.com
+skip    *.visualwebsiteoptimizer.com
+skip    *.abtasty.com
+skip    *.conductrics.com
+
+# APM / monitoring / error tracking
+skip    *.newrelic.com
+skip    *.nr-data.net
+skip    *.datadoghq.com
+skip    *.datadoghq.eu
+skip    *.sentry.io
+skip    *.sentry-cdn.com
+skip    *.bugsnag.com
+skip    *.bugsnagapp.com
+skip    *.rollbar.com
+skip    *.raygun.io
+skip    *.airbrake.io
+skip    *.appdynamics.com
+skip    *.dynatrace.com
+skip    *.instana.io
+skip    *.honeycomb.io
+skip    *.lightstep.com
+skip    *.grafana.com
+skip    *.grafana.net
+skip    *.prometheus.io
